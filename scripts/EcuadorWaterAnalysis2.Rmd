@@ -1,0 +1,157 @@
+---
+title: "Ecuador Water Treatment Analysis"
+
+author:
+- Fernando Serrano, PhD \space ^[College for Public Health and Social Justice, Saint Louis University]
+- Stephen Passman, MPH  \space ^[College for Public Health and Social Justice, Saint Louis University]
+- Alan Zelicoff, MD  \space ^[Medical-Legal Review of New Mexico, Albuquerque, New Mexico]
+
+date: "3/25/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("kable", repos = "http://cran.us.r-project.org")
+require(kable)
+require(ggplot2)
+require(gmodels)
+require(pscl) #We'll need this for computing McFadden's R-square
+require(xlsx)  # So we can read in an Excel file
+require(lme4)
+
+```
+
+# Introduction
+In order to evaluate the effect of simple water chlorination in the setting of Ecuadorian villages, data was gathered on the incidence of either diarrhea or stomach pain (coded as a logical OR variable of 'diarrhea OR stomach pain) in two villages in Ecuador, Santa Teresa and Colaguila (respectively coded as site 1 and site 2 in the dataset).  Santa Teresa  and Colaguila are located in a mountainous region southwest of the Quito, Ecuador and receive their water supply from snow melt and surface runoff, and in each town domestic water is distributed through a simple system of piping from a central distribution point.  Santa Theresa has elected to chlorinate their water supply and Colaguila has not.  We were interested in effect of chlorination on the incidence of gastrointestinal complains (measured as diarrhea or stomach pain) as part of a study on the cultural factors associated with acceptance of chlorination in the region.  
+
+Interviews were conducted by one of us (S.P.) by convenience sample of household in each village, with inquiry directed at a head of household (generally the eldest adult, either male or female).  Our primary outcome variable was the presence within the past ___ months of either diarrhea or stomach pain (dependent variable = DV) among household members.  We recorded age and sex of each household member along with their status with respect to the DV.  Socio-economic status (SES) of each household was assessed via the ??? scale, and we assumed that each member of any given household to share the same SES.  
+
+Our hypothesis was that chlorination, age, SES and gender would be predictive of the presence of the DV during the past ??? months.
+
+# Methods
+
+
+Normally distributed variables were compared using Student's t-testing and categorical variables with Fisher's exact test or Chi-Square as appropriate.
+
+Multi-level logistic regression was performed with all hypothesized predictor variables and then recomputed with statistically insignificant predictors removed.  The multi-level model accounted for data being gathered on individuals within households.  Thus, households were treated as a random variable in the model.  `glmer` in package `lmer` in *R* statistical package (version 3.3.0) was used the logistic regression.  Because the vast majority of households were in SES group 4 or 5 and only a few in SES group 3 (all of whom turned out to have symptoms of diarrhea), we combined SES groups 3 and 4 into one group (denoted 4).  This afforded model stability.
+
+# Results
+
+```{r, echo=FALSE, results = 'asis'}
+require(pscl)  # This library contains the function pR2 for McFadden's R
+EcData <-read.xlsx(file = "data/EcuadorDataWithSES.xlsx", sheetIndex = "Ecuador data final3", header = T)
+# Note that Ecuador data final 3 has the Javier family removed as per Steve's e-mail of 3/24/17
+EcData <-EcData[complete.cases(EcData),]
+EcData$DiarOrPain <- ifelse((EcData$diarrhea == 1 | EcData$sto_pain ==1), 1,0)
+EcData$Gender <-ifelse((EcData$sex==1), "Male", "Female")
+EcData$Gender <- as.factor(EcData$Gender)
+EcData$ses_2 <-ifelse((EcData$ses<5), 4, 5)
+
+# subset data by site
+EcDataST <- EcData[EcData$site ==1,]
+EcDataCol <-EcData[EcData$site ==2,]
+```
+
+```{r, echo=FALSE}
+#t-test for age
+ttestAge <-t.test(EcDataCol$age, EcDataST$age)
+
+# boxplots of raw data
+bp1 <- ggplot(EcData, aes(y=age, x=factor(site))) + geom_boxplot() + labs(title = "Age Distribution (in years)", x="Sites (1 = Santa Theresa, 2 = Colaguila)", y="Age") + geom_jitter(color = 'red', size=1, width = c(0.2), height = 0)
+
+
+# Table of SES
+# tableSES<-CrossTable(EcData$ses, EcData$site)
+# tableSES
+# knitr::kable(tableSES)
+```
+
+Age distributions appear to be roughly similar in both sites, although are found to be statistically different with formal testing (t = `r round(ttestAge$statistic, digits = 2)`, p = `r round(ttestAge$p.value, digits=3)`).  Mean age in Santa Teresa was `r round(mean(EcDataST$age),digits =2)` years and in Colaguila `r round(mean(EcDataCol$age),digits =2)`.
+
+Graphing age distribution at each site: 
+
+```{r, echo=FALSE}
+bp1
+```
+
+
+
+
+
+Two models are created.  Model 1 takes into account site (Santa Teresa = reference site), socio-economic status (descending order with SES = 4 as the higher category and SES = 5 the lower), and age category (based on the WHO Global Burden of Disease age ranges).  Model 2 includes the same predictive variables plus gender (Male is reference category).
+
+Model 1 is:
+
+$$
+    logit(P)=\beta_{0}+\beta_{1}*site+\beta_{2}*SES+\beta_{3}*category_{age}
+$$
+    
+Model 2 is:
+
+$$
+logit(P)=\beta_{0}+\beta_{1}*site+\beta_{2}*SES+\beta_{3}*category_{age}+\beta_{4}*gender
+$$
+
+
+
+Model 1 and 2 results are:
+
+```{r, echo=FALSE, results = 'asis'}
+
+# models
+model1 <- glm(DiarOrPain ~ as.factor(site) + as.factor(ses_2) + cat_age_2, data=EcData, family = 'binomial')
+model2 <- glm(DiarOrPain ~ as.factor(site) + as.factor(ses_2) + cat_age_2 + Gender, data=EcData, family = 'binomial')
+
+multilevel_model1 = glmer(DiarOrPain ~ as.factor(site) 
+                          + cat_age_2 + (1|code), 
+                         data=EcData, family = 'binomial')
+
+multilevel_model2 = glmer(DiarOrPain ~ as.factor(site) + as.factor(ses_2)
+                          + cat_age_2 + (1|code), 
+                         data=EcData, family = 'binomial')
+
+# stargazer::stargazer(model1, header = FALSE, type = 'latex')
+# stargazer::stargazer(model1, model2, header = FALSE, type = 'latex')
+
+#stargazer::stargazer(model1, model2, header = FALSE, type = 'latex',
+ #                    title              ="Logistic Model Results",
+ #         covariate.labels   = c("Site", "SES", "Age Category",
+ #                              "Gender"),
+ #        dep.var.caption    = "Log(odds) from models (1) and (2)",
+ #        dep.var.labels     = "Diarrhea or stomach pain")
+
+
+stargazer::stargazer(multilevel_model1, multilevel_model2, header = FALSE, type = 'latex',
+                     title = "Hierarchical (Multi-level) Model Results",
+                     covariate.labels   = c("Site", "SES", "Age Category",
+                                 "Gender"),
+          dep.var.caption    = "Log(odds) from models (1) and (2)",
+          dep.var.labels     = "Diarrhea or stomach pain")
+                  
+# stargazer::stargazer(anova(model1, test="Chisq"))
+# The McFadden-R^22 is sort of analogous to R^2 in ordinary least squares regression
+mcFadden_R.model1 <-pR2(model1)["McFadden"]
+mcFadden_R.model2 <-pR2(model2)["McFadden"]
+mcFaddenPercent = round(100*mcFadden_R.model1, digits =1)
+
+```
+\newpage
+
+
+# Discussion
+
+Overall conclusions from the models:
+
+* Gender is not a significant predictive factor for diarrhea/stomach pain
+* Comparing site 1 (Santa Teresa where chlorination was instituted) to site 2 (Colaguila where there was no systematic chlorination) the odds of diarrhea or stomach pain increased by approximately `r round(exp(0.9844), digits = 2)`.  Thus, it appears that chlorination had a marked effect at reducing the occurrence of diarrhea/stomach pain.
+* Incidence of diarrhea *increased* across age groups by approximately 25% and *decreased* with worsening socio-economic status.  
+
+Finally, deriving McFadden's R^2^ logistic models account for approximately **`r mcFaddenPercent`% ** of variance in the samples.
+
+The result that diarrhea decreases with lower SES is unexpected and care should be taken in its interpretation given that the vast majority of households in both sites were either SES 4 or 5 (99% in Santa Teresa and 94% in Colaguila).
+
+
+
